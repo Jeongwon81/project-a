@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Container from "@/components/ui/Container";
 import {
   inquiries,
@@ -64,6 +64,12 @@ export default function DashboardView() {
     status: "loading",
     items: [],
   });
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [company, setCompany] = useState("");
+  const [category, setCategory] = useState<InquiryCategory | "">("");
+  const [owner, setOwner] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -97,7 +103,34 @@ export default function DashboardView() {
 
     void loadInquiries();
     return () => controller.abort();
-  }, [selectedCategory]);
+  }, [selectedCategory, refreshKey]);
+
+  async function handleInquirySubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+    setSaveError(false);
+
+    try {
+      const response = await fetch("/api/inquiries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company, type: category, owner }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`문의 저장 요청 실패: ${response.status}`);
+      }
+
+      setCompany("");
+      setCategory("");
+      setOwner("");
+      setRefreshKey((current) => current + 1);
+    } catch {
+      setSaveError(true);
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   const currentMonth = monthlyInquiryCounts.at(-1)?.month ?? "";
   const previousMonth = monthlyInquiryCounts.at(-2)?.month ?? "";
@@ -124,8 +157,9 @@ export default function DashboardView() {
     count: getMonthlyCount(item.month, selectedCategory),
   }));
   const maxCount = Math.max(...chartData.map((item) => item.count), 1);
-  const visibleInquiries = inquiryList.items.toSorted((a, b) =>
-    b.receivedAt.localeCompare(a.receivedAt),
+  const visibleInquiries = inquiryList.items.toSorted(
+    (a, b) =>
+      b.receivedAt.localeCompare(a.receivedAt) || b.id - a.id,
   );
 
   return (
@@ -274,6 +308,66 @@ export default function DashboardView() {
                 : ""}
             </p>
           </div>
+          <form
+            onSubmit={handleInquirySubmit}
+            className="mb-5 rounded-media bg-cream p-5 md:p-6"
+          >
+            <h3 className="mb-4 text-card font-bold text-ink">문의 등록</h3>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:items-end">
+              <label className="block text-sm font-medium text-ink">
+                회사명
+                <input
+                  required
+                  maxLength={50}
+                  value={company}
+                  onChange={(event) => setCompany(event.target.value)}
+                  className="mt-2 w-full rounded-card border border-line bg-white px-4 py-3 text-sm font-normal text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-main"
+                />
+              </label>
+              <label className="block text-sm font-medium text-ink">
+                분류
+                <select
+                  required
+                  value={category}
+                  onChange={(event) =>
+                    setCategory(event.target.value as InquiryCategory | "")
+                  }
+                  className="mt-2 w-full rounded-card border border-line bg-white px-4 py-3 text-sm font-normal text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-main"
+                >
+                  <option value="" disabled>
+                    분류 선택
+                  </option>
+                  {inquiryCategories.map((inquiryCategory) => (
+                    <option key={inquiryCategory} value={inquiryCategory}>
+                      {inquiryCategory}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-ink">
+                담당자
+                <input
+                  required
+                  maxLength={50}
+                  value={owner}
+                  onChange={(event) => setOwner(event.target.value)}
+                  className="mt-2 w-full rounded-card border border-line bg-white px-4 py-3 text-sm font-normal text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-main"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="rounded-full bg-main px-7 py-3.5 text-btn font-semibold text-white transition-colors hover:bg-main-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-main disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? "저장 중 ..." : "등록"}
+              </button>
+              {saveError && (
+                <p className="text-sm text-main" role="alert">
+                  저장하지 못했습니다
+                </p>
+              )}
+            </div>
+          </form>
           <div className="overflow-x-auto rounded-media border border-line">
             {inquiryList.status === "loading" ? (
               <p className="bg-white px-5 py-12 text-center text-sm text-sub">
